@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Offer Uploader</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #f7f8fc;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: #444;
+        }
+
+        h1 {
+            text-align: center;
+            color: #0033cc;
+            font-weight: 700;
+            margin-bottom: 20px;
+            font-size: 2em;
+        }
+
+        .form-container {
+            max-width: 600px;
+            width: 100%;
+            padding: 30px;
+            background-color: #ffffff;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #333;
+            text-align: left;
+        }
+
+        input[type="text"],
+        input[type="file"] {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 15px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            box-sizing: border-box;
+            font-size: 16px;
+            background-color: #f7f8fc;
+            color: #333;
+        }
+
+        input[type="text"]::placeholder,
+        input[type="file"]::placeholder {
+            color: #999;
+            opacity: 0.7;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            background-color: #0033cc;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #0055ff;
+        }
+
+        #output {
+            margin-top: 20px;
+            text-align: left;
+        }
+
+        .success {
+            color: #28a745;
+        }
+
+        .error {
+            color: #dc3545;
+        }
+
+        .warning {
+            color: #ffc107;
+        }
+
+        @media (max-width: 600px) {
+            .form-container {
+                padding: 20px;
+            }
+
+            h1 {
+                font-size: 24px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="form-container">
+        <h1>CSV Offer Uploader</h1>
+        <div class="instructions">
+            <p><a href="https://docs.google.com/spreadsheets/d/1G1LiW7YyvUQjuMTI7yo6rG6mNjeaxcZ6e7_k5WT2QeI/edit?usp=sharing">Click here to use a CSV template</a></p>
+            <p><a href="https://docs.irev.com/api/user-api/offers">Click here to see the API documentation</a></p>
+        </div>
+        <label for="tokenInput">Token:</label>
+        <input type="text" id="tokenInput" placeholder="Enter your token" required>
+        <label for="baseURLInput">Your CRM URL:</label>
+        <input type="text" id="baseURLInput" placeholder="Enter the base URL" required>
+        <label for="csvFileInput">Select CSV file:</label>
+        <input type="file" id="csvFileInput" accept=".csv">
+        <button onclick="uploadCSV()">Upload CSV</button>
+        <div id="output"></div>
+    </div>
+
+    <!-- Include PapaParse library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+
+    <script>
+        async function uploadCSV() {
+
+            const token = document.getElementById('tokenInput').value;
+            const baseURL = document.getElementById('baseURLInput').value + "/backend/open-api/v1";
+            const fileInput = document.getElementById('csvFileInput');
+            const output = document.getElementById('output');
+            output.innerHTML = '';
+
+            if (!token || !baseURL) {
+                output.innerHTML = '<p class="error">Please provide both token and base URL.</p>';
+                return;
+            }
+
+            if (fileInput.files.length === 0) {
+                output.innerHTML = '<p class="error">Please select a CSV file.</p>';
+                return;
+            }
+
+            const file = fileInput.files[0];
+            console.log('File selected:', file);
+
+            if (typeof Papa === 'undefined') {
+                output.innerHTML = '<p class="error">PapaParse library is not loaded. Please check your internet connection.</p>';
+                console.error('PapaParse library is not loaded.');
+                return;
+            }
+
+            Papa.parse(file, {
+                header: true,
+                complete: async function (results) {
+                    console.log('CSV parsing complete:', results);
+                    const offers = results.data.filter(row => Object.values(row).some(value => value));
+                    output.innerHTML = '';
+
+                    for (const offer of offers) {
+                        if (checkRequiredFields(offer)) {
+                            try {
+                                const response = await createOffer(offer, token, baseURL);
+                                console.log('Response received:', response);
+                                const offerName = offer.name.replace(/\+/g, ' ');
+                                if (response.status !== 200) {
+                                    output.innerHTML += `<p class="error">Failed to create offer: ${offerName} (HTTP Status: ${response.status})</p>`;
+                                } else {
+                                    output.innerHTML += `<p class="success">Successfully created offer: ${offerName}</p>`;
+                                }
+                            } catch (error) {
+                                console.error('Error creating offer:', error);
+                                const offerName = offer.name.replace(/\+/g, ' ');
+                                output.innerHTML += `<p class="error">Error creating offer: ${offerName} (${error.message})</p>`;
+                            }
+                        } else {
+                            console.warn('Offer has missing required fields:', offer);
+                            const offerName = offer.name.replace(/\+/g, ' ');
+                            output.innerHTML += `<p class="warning">Offer has missing required fields: ${offerName}</p>`;
+                        }
+                    }
+                },
+                error: function (err) {
+                    console.error('Error parsing CSV:', err);
+                    output.innerHTML = '<p class="error">Error parsing CSV file.</p>';
+                }
+            });
+        }
+
+        function checkRequiredFields(offer) {
+            return offer.name &&
+                offer.advertiser_id &&
+                offer.click_session_lifespan &&
+                offer.redirect_type &&
+                offer.status &&
+                offer.archived &&
+                offer.privacy;
+        }
+
+        async function createOffer(offer, token, baseURL) {
+            const queryParams = new URLSearchParams();
+
+            // Handle country_code and language_code as arrays
+            const countryCodes = offer.country_code ? offer.country_code.split(',') : [];
+            countryCodes.forEach(code => queryParams.append('country_code[]', code.trim()));
+
+            const languageCodes = offer.language_code ? offer.language_code.split(',') : [];
+            languageCodes.forEach(code => queryParams.append('language_code[]', code.trim()));
+
+            // Append other parameters
+            for (const [key, value] of Object.entries(offer)) {
+                if (key !== 'country_code' && key !== 'language_code') {
+                    if (value) {
+                        queryParams.append(key, value);
+                    }
+                }
+            }
+
+            const url = `${baseURL}/users/offers/?${queryParams.toString()}`;
+            console.log('Sending request to URL:', url);
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            return response;
+        }
+    </script>
+</body>
+
+</html>
