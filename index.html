@@ -208,12 +208,13 @@
         async function createOffer(offer, token, baseURL) {
             const queryParams = new URLSearchParams();
 
-            // Handle country_code and language_code as arrays
-            const countryCodes = offer.country_code ? offer.country_code.split(',') : [];
-            countryCodes.forEach(code => queryParams.append('country_code[]', code.trim()));
-
-            const languageCodes = offer.language_code ? offer.language_code.split(',') : [];
-            languageCodes.forEach(code => queryParams.append('language_code[]', code.trim()));
+            if (countryCodes.length > 0) {
+                queryParams.append('country_code', countryCodes.join(','));
+            }
+            
+            if (languageCodes.length > 0) {
+                queryParams.append('language_code', languageCodes.join(','));
+            }
 
             // Append other parameters
             for (const [key, value] of Object.entries(offer)) {
